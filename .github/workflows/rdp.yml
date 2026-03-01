@@ -8,6 +8,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
+
     - name: Install Brave Browser
       shell: pwsh
       run: |
@@ -25,10 +26,16 @@ jobs:
     - name: Connect Tailscale
       shell: pwsh
       run: |
-        & "C:\Program Files\Tailscale\tailscale.exe" up `
-        --authkey ${{ secrets.TAILSCALE_AUTHKEY }}
+        Start-Service -Name tailscaled -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 5
 
-    - name: Enable RDP + Set Password
+        $tailscalePath = "C:\Program Files\Tailscale\tailscale.exe"
+
+        Start-Process -FilePath $tailscalePath `
+        -ArgumentList "up --auth-key ${{ secrets.TAILSCALE_AUTHKEY }} --hostname=github-rdp" `
+        -Wait
+
+    - name: Enable RDP + Password Setup
       shell: pwsh
       run: |
         Set-ItemProperty `
@@ -38,11 +45,25 @@ jobs:
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
         Set-ItemProperty `
-        -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+        -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\Rdp-Tcp' `
         -Name "UserAuthentication" -Value 1
 
         $Password = ConvertTo-SecureString "Adynr17@" -AsPlainText -Force
         Set-LocalUser -Name "runneradmin" -Password $Password
+
+    - name: Fast Remove Visual Studio
+      shell: pwsh
+      run: |
+        $paths = @(
+            "C:\Program Files\Microsoft Visual Studio",
+            "C:\ProgramData\Microsoft\VisualStudio"
+        )
+
+        foreach ($p in $paths) {
+            if (Test-Path $p) {
+                Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
 
     - name: Keep Alive 6 Hours
       shell: pwsh
