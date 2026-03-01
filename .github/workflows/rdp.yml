@@ -1,0 +1,25 @@
+name: RDP-Tailscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install Desktop + XRDP + Tailscale
+        run: |
+          sudo apt update
+          sudo apt install xfce4 xfce4-goodies xrdp curl -y
+
+          echo "xfce4-session" | sudo tee /etc/skel/.xsession
+          sudo systemctl enable xrdp
+          sudo systemctl restart xrdp
+
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=github-rdp
+
+      - name: Keep workflow alive
+        run: sleep 21600
