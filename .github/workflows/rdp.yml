@@ -1,25 +1,55 @@
-name: RDP-Tailscale
+name: Windows-RDP-Custom-Password
 
 on:
   workflow_dispatch:
 
 jobs:
-  rdp:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: windows-latest
 
     steps:
-      - name: Install Desktop + XRDP + Tailscale
-        run: |
-          sudo apt update
-          sudo apt install xfce4 xfce4-goodies xrdp curl -y
+    - name: Install Brave Browser
+      shell: pwsh
+      run: |
+        $url = "https://laptop-updates.brave.com/latest/winx64"
+        Invoke-WebRequest -Uri $url -OutFile "D:\BraveSetup.exe"
 
-          echo "xfce4-session" | sudo tee /etc/skel/.xsession
-          sudo systemctl enable xrdp
-          sudo systemctl restart xrdp
+        Start-Process "D:\BraveSetup.exe" -ArgumentList "/silent /install" -Wait
 
-          curl -fsSL https://tailscale.com/install.sh | sh
+    - name: Setup Tailscale VPN
+      shell: pwsh
+      run: |
+        Invoke-WebRequest https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe -OutFile tailscale.exe
+        Start-Process -FilePath ".\tailscale.exe" -ArgumentList "/quiet" -Wait
 
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=github-rdp
+    - name: Connect Tailscale
+      shell: pwsh
+      run: |
+        & "C:\Program Files\Tailscale\tailscale.exe" up `
+        --authkey ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Keep workflow alive
-        run: sleep 21600
+    - name: Enable RDP + Set Password
+      shell: pwsh
+      run: |
+        Set-ItemProperty `
+        -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+        -Name "fDenyTSConnections" -Value 0
+
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+        Set-ItemProperty `
+        -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+        -Name "UserAuthentication" -Value 1
+
+        $Password = ConvertTo-SecureString "Adynr17@" -AsPlainText -Force
+        Set-LocalUser -Name "runneradmin" -Password $Password
+
+    - name: Keep Alive 6 Hours
+      shell: pwsh
+      run: |
+        $end_time = (Get-Date).AddHours(6)
+
+        while ((Get-Date) -lt $end_time) {
+            Write-Host "RDP Aktif..."
+            Start-Sleep -Seconds 60
+        }
